@@ -66,6 +66,10 @@ _run_ci:
 	@echo "INFO:\tRun ci over jiva image"
 	sudo bash ./ci/start_init_test.sh
 
+gotgt_ci:
+	@echo "INFO:\t Run ci over jiva image"
+	sudo bash ./ci/gotgt.sh
+
 build_image:
 	@echo "INFO:\tRun unit tests and build image"
 	bash ./scripts/ci
@@ -92,6 +96,7 @@ endif
 build: deps build_image _run_ci _push_image
 build_gitlab: deps build_image _push_image
 
+gotgt: deps build_image gotgt_ci
 #
 # This is done to avoid conflict with a file of same name as the targets
 # mentioned in this makefile.
