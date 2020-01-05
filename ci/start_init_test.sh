@@ -45,10 +45,13 @@ collect_logs_and_exit() {
 
 	echo "ls VOL1>>"
 	ls -ltr /tmp/vol1/
+	cat $(ls *.meta)
 	echo "ls VOL2>>"
 	ls -ltr /tmp/vol2/
+	cat $(ls *.meta)
 	echo "ls VOL3>>"
 	ls -ltr /tmp/vol3/
+	cat $(ls *.meta)
 	#Below is to get stack traces of longhorn processes
 	kill -SIGABRT $(ps -auxwww | grep -w longhorn | grep -v grep | awk '{print $2}')
 
@@ -1283,18 +1286,23 @@ test_extent_support_file_system() {
 }
 
 upgrade_controller() {
+       # print logs to know if there was any error
+       docker logs $orig_controller_id
        docker stop $orig_controller_id
        docker rm $orig_controller_id
        orig_controller_id=$(start_controller "$CONTROLLER_IP" "store1" "3")
 }
 
 upgrade_replicas() {
+       docker logs $replica1_id
        docker stop $replica1_id
        docker rm $replica1_id
        replica1_id=$(start_replica "$CONTROLLER_IP" "$REPLICA_IP1" "vol1")
+       docker logs $replica1_id
        docker stop $replica2_id
        docker rm $replica2_id
        replica2_id=$(start_replica "$CONTROLLER_IP" "$REPLICA_IP2" "vol2")
+       docker logs $replica1_id
        docker stop $replica3_id
        docker rm $replica3_id
        replica3_id=$(start_replica "$CONTROLLER_IP" "$REPLICA_IP3" "vol3")
