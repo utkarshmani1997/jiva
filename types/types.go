@@ -148,11 +148,6 @@ type Stats struct {
 
 type Interface interface{}
 
-type PeerDetails struct {
-	ReplicaCount       int
-	QuorumReplicaCount int
-}
-
 type Frontend interface {
 	Startup(name string, frontendIP string, clusterIP string, size, sectorSize int64, rw IOs) error
 	Shutdown() error

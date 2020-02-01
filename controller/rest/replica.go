@@ -156,45 +156,10 @@ func (s *Server) CreateReplica(rw http.ResponseWriter, req *http.Request) error 
 	return nil
 }
 
-func (s *Server) CreateQuorumReplica(rw http.ResponseWriter, req *http.Request) error {
-	var replica Replica
-	apiContext := api.GetApiContext(req)
-	if err := apiContext.Read(&replica); err != nil {
-		logrus.Errorf("read in createQuorumReplica failed %v", err)
-		return err
-	}
-	logrus.Infof("Create QuorumReplica for address %v", replica.Address)
-
-	if err := s.c.AddQuorumReplica(replica.Address); err != nil {
-		return err
-	}
-
-	r := s.getQuorumReplica(apiContext, replica.Address)
-	if r == nil {
-		logrus.Errorf("createQuorumReplica failed for id %v", replica.Address)
-		return fmt.Errorf("createQuorumReplica failed while getting it")
-	}
-
-	apiContext.Write(r)
-
-	return nil
-}
-
 func (s *Server) getReplica(context *api.ApiContext, id string) *Replica {
 	s.c.Lock()
 	defer s.c.Unlock()
 	for _, r := range s.c.ListReplicas() {
-		if r.Address == id {
-			return NewReplica(context, r)
-		}
-	}
-	return nil
-}
-
-func (s *Server) getQuorumReplica(context *api.ApiContext, id string) *Replica {
-	s.c.Lock()
-	defer s.c.Unlock()
-	for _, r := range s.c.ListQuorumReplicas() {
 		if r.Address == id {
 			return NewReplica(context, r)
 		}

@@ -87,13 +87,6 @@ func (c *Client) WriteAt(buf []byte, offset int64) (int, error) {
 	return c.operation(TypeWrite, buf, offset, int64(len(buf)))
 }
 
-/*
-//Update Quorum replica client
-func (c *Client) Update() (int, error) {
-	return c.operation(TypeUpdate, nil, 0)
-}
-*/
-
 //SetError replica client transport error
 func (c *Client) SetError(err error) {
 	c.responses <- &Message{

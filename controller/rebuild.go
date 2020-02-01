@@ -109,9 +109,6 @@ func (c *Controller) VerifyRebuildReplica(address string) error {
 	}
 	logrus.Infof("WO replica %v's chain verified, update replica mode to RW", address)
 	c.setReplicaModeNoLock(address, types.RW)
-	if len(c.quorumReplicas) > c.quorumReplicaCount {
-		c.quorumReplicaCount = len(c.quorumReplicas)
-	}
 	c.UpdateVolStatus()
 	c.StartAutoSnapDeletion <- true
 	return nil

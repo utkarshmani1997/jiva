@@ -71,41 +71,6 @@ func find(list []string, item string) int {
 	return -1
 }
 
-func (t *Task) AddQuorumReplica(replicaAddress string, _ *replica.Server) error {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-Register:
-	volume, err := t.client.GetVolume()
-	if err != nil {
-		return err
-	}
-	addr := strings.Split(replicaAddress, "://")
-	parts := strings.Split(addr[1], ":")
-	Replica, _ := replica.CreateTempReplica()
-	server, _ := replica.CreateTempServer()
-
-	if volume.ReplicaCount == 0 {
-		revisionCount := Replica.GetRevisionCounter()
-		replicaType := "quorum"
-		upTime := time.Since(Replica.ReplicaStartTime)
-		state, _ := server.PrevStatus()
-		_ = t.client.Register(parts[0], revisionCount, replicaType, upTime, string(state))
-		select {
-		case <-ticker.C:
-			goto Register
-		case _ = <-replica.ActionChannel:
-		}
-	}
-
-	logrus.Infof("Adding quorum replica %s in WO mode", replicaAddress)
-	_, err = t.client.CreateQuorumReplica(replicaAddress)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (t *Task) CloneReplica(url string, address string, cloneIP string, snapName string) error {
 	var (
 		fromReplica rest.Replica

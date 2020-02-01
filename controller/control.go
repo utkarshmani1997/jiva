@@ -25,13 +25,10 @@ type Controller struct {
 	sectorSize               int64
 	replicas                 []types.Replica
 	ReplicationFactor        int
-	quorumReplicas           []types.Replica
-	quorumReplicaCount       int
 	factory                  types.BackendFactory
 	backend                  *replicator
 	frontend                 types.Frontend
 	RegisteredReplicas       map[string]types.RegReplica
-	RegisteredQuorumReplicas map[string]types.RegReplica
 	MaxRevReplica            string
 	StartTime                time.Time
 	StartSignalled           bool
@@ -100,11 +97,10 @@ func WithClusterIP(ip string) BuildOpts {
 // NewController instantiates a new Controller
 func NewController(ch chan bool, opts ...BuildOpts) *Controller {
 	c := &Controller{
-		RegisteredReplicas:       map[string]types.RegReplica{},
-		RegisteredQuorumReplicas: map[string]types.RegReplica{},
-		StartTime:                time.Now(),
-		ReadOnly:                 true,
-		StartAutoSnapDeletion:    ch,
+		RegisteredReplicas:    map[string]types.RegReplica{},
+		StartTime:             time.Now(),
+		ReadOnly:              true,
+		StartAutoSnapDeletion: ch,
 	}
 
 	for _, o := range opts {
@@ -123,13 +119,7 @@ func (c *Controller) UpdateVolStatus() {
 		}
 	}
 
-	for _, replica := range c.quorumReplicas {
-		if replica.Mode == "RW" {
-			rwReplicaCount++
-		}
-	}
-
-	if rwReplicaCount >= (((c.ReplicationFactor + c.quorumReplicaCount) / 2) + 1) {
+	if rwReplicaCount >= (((c.ReplicationFactor) / 2) + 1) {
 		c.ReadOnly = false
 	} else {
 		c.ReadOnly = true
@@ -137,10 +127,6 @@ func (c *Controller) UpdateVolStatus() {
 
 	logrus.Infof("Previously Volume RO: %v, Currently: %v,  Total Replicas: %v,  RW replicas: %v, Total backends: %v",
 		prev, c.ReadOnly, len(c.replicas), rwReplicaCount, len(c.backend.backends))
-}
-
-func (c *Controller) AddQuorumReplica(address string) error {
-	return c.addQuorumReplica(address, false)
 }
 
 func (c *Controller) AddReplica(address string) error {
@@ -250,62 +236,6 @@ func (c *Controller) getRWReplica() (*types.Replica, error) {
 	return rwReplica, nil
 }
 
-func (c *Controller) addQuorumReplica(address string, snapshot bool) error {
-	c.Lock()
-	if ok, err := c.canAdd(address); !ok {
-		c.Unlock()
-		return err
-	}
-	c.Unlock()
-
-	newBackend, err := c.factory.Create(address)
-	if err != nil {
-		logrus.Infof("remote creation addquorum failed %v", err)
-		return err
-	}
-
-	c.Lock()
-	defer c.Unlock()
-
-	err = c.addQuorumReplicaNoLock(newBackend, address, snapshot)
-	if err != nil {
-		return err
-	}
-
-	if err := c.backend.SetRebuilding(address, true); err != nil {
-		return fmt.Errorf("Failed to set rebuild : %v", true)
-	}
-	rwReplica, err := c.getRWReplica()
-	if err != nil {
-		return err
-	}
-
-	counter, err := c.backend.GetRevisionCounter(rwReplica.Address)
-	if err != nil || counter == -1 {
-		return fmt.Errorf("Failed to get revision counter of RW Replica %v: counter %v, err %v",
-			rwReplica.Address, counter, err)
-
-	}
-
-	if err := c.backend.SetQuorumRevisionCounter(address, counter); err != nil {
-		return fmt.Errorf("Fail to set revision counter for %v: %v", address, err)
-	}
-
-	if err := c.backend.SetRebuilding(address, false); err != nil {
-		return fmt.Errorf("Failed to set rebuild : %v", true)
-	}
-	c.UpdateVolStatus()
-
-	/*
-		for _, temprep := range c.replicas {
-			if err := c.backend.SetQuorumReplicaCounter(temprep.Address, int64(len(c.replicas))); err != nil {
-				return fmt.Errorf("Fail to set replica counter for %v: %v", address, err)
-			}
-		}
-	*/
-	return nil
-}
-
 func (c *Controller) verifyReplicationFactor() error {
 	replicationFactor := util.CheckReplicationFactor()
 	if replicationFactor == 0 {
@@ -357,19 +287,6 @@ func (c *Controller) registerReplica(register types.RegReplica) error {
 	logrus.Infof("Register Replica, Address: %v Uptime: %v State: %v Type: %v RevisionCount: %v",
 		register.Address, register.UpTime, register.RepState, register.RepType, register.RevCount)
 
-	_, ok := c.RegisteredReplicas[register.Address]
-	if !ok {
-		_, ok = c.RegisteredQuorumReplicas[register.Address]
-		if ok {
-			logrus.Infof("Quorum replica Address %v already present in registered list", register.Address)
-			return nil
-		}
-	}
-
-	if register.RepType == "quorum" {
-		c.RegisteredQuorumReplicas[register.Address] = register
-		return nil
-	}
 	c.RegisteredReplicas[register.Address] = register
 
 	if len(c.replicas) > 0 {
@@ -403,8 +320,7 @@ func (c *Controller) registerReplica(register types.RegReplica) error {
 		c.MaxRevReplica = register.Address
 	}
 
-	if (len(c.RegisteredReplicas) >= ((c.ReplicationFactor / 2) + 1)) &&
-		((len(c.RegisteredReplicas) + len(c.RegisteredQuorumReplicas)) >= (((c.quorumReplicaCount + c.ReplicationFactor) / 2) + 1)) {
+	if len(c.RegisteredReplicas) >= ((c.ReplicationFactor / 2) + 1) {
 		logrus.Infof("Replica %v signalled to start, registered replicas: %#v", c.MaxRevReplica, c.RegisteredReplicas)
 		if err := c.signalReplica(); err != nil {
 			return err
@@ -521,44 +437,6 @@ func (c *Controller) Resize(name string, size string) error {
 	return nil
 }
 
-func (c *Controller) addQuorumReplicaNoLock(newBackend types.Backend, address string, snapshot bool) error {
-	if ok, err := c.canAdd(address); !ok {
-		return err
-	}
-
-	if snapshot {
-		uuid := util.UUID()
-		created := util.Now()
-
-		if remain, err := c.backend.RemainSnapshots(); err != nil {
-			return err
-		} else if remain <= 0 {
-			return fmt.Errorf("Too many snapshots created")
-		}
-
-		if err := c.backend.Snapshot(uuid, false, created); err != nil {
-			newBackend.Close()
-			return err
-		}
-		if err := newBackend.Snapshot(uuid, false, created); err != nil {
-			newBackend.Close()
-			return err
-		}
-	}
-
-	c.quorumReplicas = append(c.quorumReplicas, types.Replica{
-		Address: address,
-		Mode:    types.WO,
-	})
-	c.quorumReplicaCount++
-
-	c.backend.AddQuorumBackend(address, newBackend)
-
-	go c.monitoring(address, newBackend)
-
-	return nil
-}
-
 func (c *Controller) addReplicaNoLock(newBackend types.Backend, address string, snapshot bool) error {
 	/*
 	 * No need to add prints in this function.
@@ -614,11 +492,6 @@ func (c *Controller) hasReplica(address string) bool {
 			return true
 		}
 	}
-	for _, i := range c.quorumReplicas {
-		if i.Address == address {
-			return true
-		}
-	}
 	return false
 }
 
@@ -669,25 +542,6 @@ func (c *Controller) RemoveReplicaNoLock(address string) error {
 		}
 	}
 
-	for i, r := range c.quorumReplicas {
-		foundregrep = 0
-		if r.Address == address {
-			for regrep := range c.RegisteredQuorumReplicas {
-				logrus.Infof("RemoveReplica quorum ToRemove: %v Found: %v", address, regrep)
-				if address == "tcp://"+regrep+":9502" {
-					delete(c.RegisteredQuorumReplicas, regrep)
-					foundregrep = 1
-					break
-				}
-			}
-			if foundregrep == 0 {
-				logrus.Infof("RemoveReplica %v not found in registered quorum replicas", address)
-			}
-			c.quorumReplicas = append(c.quorumReplicas[:i], c.quorumReplicas[i+1:]...)
-			c.backend.RemoveBackend(r.Address)
-			break
-		}
-	}
 	c.UpdateVolStatus()
 	return nil
 }
@@ -701,12 +555,6 @@ func (c *Controller) RemoveReplica(address string) error {
 
 func (c *Controller) ListReplicas() []types.Replica {
 	return c.replicas
-}
-
-func (c *Controller) ListQuorumReplicas() []types.Replica {
-	c.Lock()
-	defer c.Unlock()
-	return c.quorumReplicas
 }
 
 func (c *Controller) SetReplicaMode(address string, mode types.Mode) error {
@@ -734,20 +582,6 @@ func (c *Controller) setReplicaModeNoLock(address string, mode types.Mode) {
 				logrus.Infof("Set replica %v to mode %v", address, mode)
 				r.Mode = mode
 				c.replicas[i] = r
-				c.backend.SetMode(address, mode)
-			} else {
-				logrus.Infof("Ignore set replica %v to mode %v due to it's ERR",
-					address, mode)
-			}
-		}
-	}
-	for i, r := range c.quorumReplicas {
-		if r.Address == address {
-			found = found + 1
-			if r.Mode != types.ERR {
-				logrus.Infof("Set replica %v to mode %v", address, mode)
-				r.Mode = mode
-				c.quorumReplicas[i] = r
 				c.backend.SetMode(address, mode)
 			} else {
 				logrus.Infof("Ignore set replica %v to mode %v due to it's ERR",
@@ -905,19 +739,6 @@ func (c *Controller) Start(addresses ...string) error {
 		}
 		if sendSignal == 1 {
 			logrus.Infof("sending add signal to %v", regrep)
-			c.factory.SignalToAdd(regrep, "add")
-		}
-	}
-	for regrep := range c.RegisteredQuorumReplicas {
-		sendSignal = 1
-		for _, tmprep := range c.quorumReplicas {
-			if tmprep.Address == "tcp://"+regrep+":9502" {
-				sendSignal = 0
-				break
-			}
-		}
-		if sendSignal == 1 {
-			logrus.Infof("sending add signal to quorum %v", regrep)
 			c.factory.SignalToAdd(regrep, "add")
 		}
 	}
@@ -1082,7 +903,6 @@ func (c *Controller) handleError(err error) error {
 func (c *Controller) reset() {
 	logrus.Infof("resetting controller")
 	c.replicas = []types.Replica{}
-	c.quorumReplicas = []types.Replica{}
 	c.backend = &replicator{}
 }
 

@@ -20,7 +20,6 @@ var (
 type replicator struct {
 	backendsAvailable bool
 	backends          map[string]backendWrapper
-	quorumBackends    map[string]backendWrapper
 	writerIndex       map[int]string
 	updaterIndex      map[int]string
 	readerIndex       map[int]string
@@ -57,25 +56,6 @@ func (b *BackendError) Error() string {
 	}
 }
 
-func (r *replicator) AddQuorumBackend(address string, backend types.Backend) {
-	if _, ok := r.quorumBackends[address]; ok {
-		return
-	}
-
-	logrus.Infof("Adding quorum backend: %s", address)
-
-	if r.quorumBackends == nil {
-		r.quorumBackends = map[string]backendWrapper{}
-	}
-
-	r.quorumBackends[address] = backendWrapper{
-		backend: backend,
-		mode:    types.WO,
-	}
-
-	r.buildReadWriters()
-}
-
 func (r *replicator) AddBackend(address string, backend types.Backend) {
 	if _, ok := r.backends[address]; ok {
 		logrus.Infof("backend: %s already part of backends", address)
@@ -86,9 +66,6 @@ func (r *replicator) AddBackend(address string, backend types.Backend) {
 
 	if r.backends == nil {
 		r.backends = map[string]backendWrapper{}
-	}
-	if r.quorumBackends == nil {
-		r.quorumBackends = map[string]backendWrapper{}
 	}
 
 	r.backends[address] = backendWrapper{
@@ -102,11 +79,8 @@ func (r *replicator) AddBackend(address string, backend types.Backend) {
 func (r *replicator) RemoveBackend(address string) {
 	backend, ok := r.backends[address]
 	if !ok {
-		backend, ok = r.quorumBackends[address]
-		if !ok {
-			logrus.Infof("RemoveBackend %v not found", address)
-			return
-		}
+		logrus.Infof("RemoveBackend %v not found", address)
+		return
 	}
 
 	logrus.Infof("Remove backend: %s mode: %v", address, backend.mode)
@@ -224,12 +198,6 @@ func (r *replicator) buildReadWriters() {
 		if b.mode == types.RW {
 			r.readerIndex[len(readers)] = address
 			readers = append(readers, b.backend)
-		}
-	}
-	for address, b := range r.quorumBackends {
-		if b.mode != types.ERR {
-			r.updaterIndex[len(updaters)] = address
-			updaters = append(updaters, b.backend)
 		}
 	}
 
@@ -351,15 +319,6 @@ func (r *replicator) Close() error {
 		}
 	}
 
-	for _, backend := range r.quorumBackends {
-		if backend.mode == types.ERR {
-			continue
-		}
-		if err := backend.backend.Close(); err != nil {
-			lastErr = err
-		}
-	}
-
 	r.reset(true)
 
 	return lastErr
@@ -458,28 +417,10 @@ func (r *replicator) SetRevisionCounter(address string, counter int64) error {
 	return nil
 }
 
-func (r *replicator) SetQuorumRevisionCounter(address string, counter int64) error {
-	backend, ok := r.quorumBackends[address]
-	if !ok {
-		return fmt.Errorf("Cannot find backend %v", address)
-	}
-
-	if err := backend.backend.SetRevisionCounter(counter); err != nil {
-		return err
-	}
-
-	logrus.Infof("Set backend %s revision counter to %v", address, counter)
-
-	return nil
-}
-
 func (r *replicator) SetRebuilding(address string, rebuilding bool) error {
 	backend, ok := r.backends[address]
 	if !ok {
-		backend, ok = r.quorumBackends[address]
-		if !ok {
-			return fmt.Errorf("Cannot find backend %v", address)
-		}
+		return fmt.Errorf("Cannot find backend %v", address)
 	}
 
 	if err := backend.backend.SetRebuilding(rebuilding); err != nil {

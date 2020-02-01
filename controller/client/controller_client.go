@@ -107,14 +107,6 @@ func (c *ControllerClient) CreateReplica(address string) (*rest.Replica, error) 
 	return &resp, err
 }
 
-func (c *ControllerClient) CreateQuorumReplica(address string) (*rest.Replica, error) {
-	var resp rest.Replica
-	err := c.post("/quorumreplicas", &rest.Replica{
-		Address: address,
-	}, &resp)
-	return &resp, err
-}
-
 // DeleteSnapshot ...
 func (c *ControllerClient) DeleteSnapshot(name string) error {
 	volume, err := c.GetVolume()

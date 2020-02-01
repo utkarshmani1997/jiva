@@ -65,10 +65,6 @@ type Replica struct {
 	revisionCache int64
 	revisionFile  *sparse.DirectFileIoProcessor
 
-	peerLock  sync.Mutex
-	peerCache types.PeerDetails
-	peerFile  *sparse.DirectFileIoProcessor
-
 	cloneStatus   string
 	CloneSnapName string
 	Clone         bool
@@ -1184,14 +1180,12 @@ func (r *Replica) Sync() (int, error) {
 		return -1, fmt.Errorf("Can not sync on read-only replica")
 	}
 
-	if r.ReplicaType != "quorum" {
-		r.RLock()
-		r.info.Dirty = true
-		n, err := r.volume.Sync()
-		r.RUnlock()
-		if err != nil {
-			return n, err
-		}
+	r.RLock()
+	r.info.Dirty = true
+	n, err := r.volume.Sync()
+	r.RUnlock()
+	if err != nil {
+		return n, err
 	}
 	return 0, nil
 }
@@ -1200,14 +1194,12 @@ func (r *Replica) Unmap(offset int64, length int64) (int, error) {
 		return -1, fmt.Errorf("Can not sync on read-only replica")
 	}
 
-	if r.ReplicaType != "quorum" {
-		r.RLock()
-		r.info.Dirty = true
-		n, err := r.volume.Unmap(offset, length)
-		r.RUnlock()
-		if err != nil {
-			return n, err
-		}
+	r.RLock()
+	r.info.Dirty = true
+	n, err := r.volume.Unmap(offset, length)
+	r.RUnlock()
+	if err != nil {
+		return n, err
 	}
 	return 0, nil
 }
@@ -1221,15 +1213,13 @@ func (r *Replica) WriteAt(buf []byte, offset int64) (int, error) {
 	if r.readOnly {
 		return 0, fmt.Errorf("Can not write on read-only replica")
 	}
-	if r.ReplicaType != "quorum" {
-		r.RLock()
-		r.info.Dirty = true
-		c, err = r.volume.WriteAt(buf, offset)
-		mode = r.mode
-		r.RUnlock()
-		if err != nil {
-			return c, err
-		}
+	r.RLock()
+	r.info.Dirty = true
+	c, err = r.volume.WriteAt(buf, offset)
+	mode = r.mode
+	r.RUnlock()
+	if err != nil {
+		return c, err
 	}
 	if mode == types.RW {
 		if err := r.increaseRevisionCounter(); err != nil {
