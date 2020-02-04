@@ -1,8 +1,0 @@
-FROM golang:1.13-alpine
-
-RUN apk add build-base
-
-WORKDIR /go/src/github.com/openebs/jiva
-COPY . .
-
-CMD ["sh", "/go/src/github.com/openebs/jiva/scripts/test"]

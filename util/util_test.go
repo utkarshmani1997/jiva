@@ -6,7 +6,6 @@ import (
 	"os"
 	"regexp"
 	"testing"
-	"time"
 )
 
 func TestFilter(t *testing.T) {
@@ -68,56 +67,6 @@ func TestUUID(t *testing.T) {
 	}
 }
 
-func TestDevice(t *testing.T) {
-	err := DuplicateDevice("/dev/random", "/dev/jivatest")
-	defer RemoveDevice("/dev/jivatest")
-	if err != nil {
-		t.Fatalf("failed creating node: %s", err)
-	}
-}
-
-func TestDeviceShouldFail(t *testing.T) {
-	err := DuplicateDevice("/dev/random", "/trw/jivatest")
-	defer RemoveDevice("/trw/jivatest")
-	if err == nil {
-		t.Fatalf("did not fail creating node")
-	}
-}
-
-func TestRemoveDeviceNotExists(t *testing.T) {
-	err := RemoveDevice("/tmp/jivatest")
-	if err == nil {
-		t.Fatalf("did not fail deleting device")
-	}
-}
-
-func TestRemove(t *testing.T) {
-	dir, err := ioutil.TempDir("", "jiva")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := remove(dir); err != nil {
-		t.Errorf("remove() should not fail. error = %v", err)
-	}
-}
-
-func TestRemoveAsync(t *testing.T) {
-	dir, err := ioutil.TempDir("", "jiva")
-	if err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error)
-	go removeAsync(dir, done)
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("should not fail removing folder: %s. Error: %s", dir, err)
-		}
-	case <-time.After(30 * time.Second):
-		t.Fatalf("Timeout trying to delete %s", dir)
-	}
-}
-
 func TestValidVolumeName(t *testing.T) {
 	tests := []struct {
 		scenario string
@@ -133,25 +82,6 @@ func TestValidVolumeName(t *testing.T) {
 		t.Run(tt.scenario, func(t *testing.T) {
 			if got := ValidVolumeName(tt.name); got != tt.want {
 				t.Errorf("ValidVolumeName() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestVolume2ISCSIName(t *testing.T) {
-	tests := []struct {
-		scenario string
-		name     string
-		want     string
-	}{
-		{"no-replacement", "ThisIsAName", "ThisIsAName"},
-		{"with-replacement", "This_Is_A_Name", "This:Is:A:Name"},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.scenario, func(t *testing.T) {
-			if got := Volume2ISCSIName(tt.name); got != tt.want {
-				t.Errorf("Volume2ISCSIName() = %v, want %v", got, tt.want)
 			}
 		})
 	}

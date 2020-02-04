@@ -7,14 +7,12 @@ import (
 	"os"
 	"regexp"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/handlers"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -89,67 +87,12 @@ func (h filteredLoggingHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 	h.loggingHandler.ServeHTTP(w, req)
 }
 
-func DuplicateDevice(src, dest string) error {
-	stat := unix.Stat_t{}
-	if err := unix.Stat(src, &stat); err != nil {
-		return fmt.Errorf("Cannot duplicate device because cannot find %s: %v", src, err)
-	}
-	major := int(stat.Rdev / 256)
-	minor := int(stat.Rdev % 256)
-	if err := mknod(dest, major, minor); err != nil {
-		return fmt.Errorf("Cannot duplicate device %s to %s", src, dest)
-	}
-	return nil
-}
-
-func mknod(device string, major, minor int) error {
-	var fileMode os.FileMode = 0600
-	fileMode |= unix.S_IFBLK
-	dev := int((major << 8) | (minor & 0xff) | ((minor & 0xfff00) << 12))
-
-	logrus.Infof("Creating device %s %d:%d", device, major, minor)
-	return unix.Mknod(device, uint32(fileMode), dev)
-}
-
-func RemoveDevice(dev string) error {
-	var err error
-	if _, err = os.Stat(dev); err == nil {
-		if err = remove(dev); err != nil {
-			return fmt.Errorf("Failed to removing device %s, %v", dev, err)
-		}
-	}
-	return err
-}
-
-func removeAsync(path string, done chan<- error) {
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		logrus.Errorf("Unable to remove: %v", path)
-		done <- err
-	}
-	done <- nil
-}
-
-func remove(path string) error {
-	done := make(chan error)
-	go removeAsync(path, done)
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(30 * time.Second):
-		return fmt.Errorf("Timeout trying to delete %s", path)
-	}
-}
-
 func ValidVolumeName(name string) bool {
 	if len(name) > MaximumVolumeNameSize {
 		return false
 	}
 	validName := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 	return validName.MatchString(name)
-}
-
-func Volume2ISCSIName(name string) string {
-	return strings.Replace(name, "_", ":", -1)
 }
 
 func Now() string {
