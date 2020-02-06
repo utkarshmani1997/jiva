@@ -9,4 +9,10 @@ PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.
 
 echo Packages: ${PACKAGES}
 
-go test -race -cover -tags="test" ${PACKAGES}
+if [ ${ARCH} == "linux_arm64" ]
+then
+	sudo -E env "PATH=$PATH" go test -race -cover -tags="test" ${PACKAGES}
+else
+	go test -race -cover -tags="test" ${PACKAGES}
+fi
+

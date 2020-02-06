@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -25,8 +26,17 @@ type TestSuite struct{}
 
 var _ = Suite(&TestSuite{})
 
+func createTmpDir() (string, error) {
+	switch runtime.GOARCH {
+	case "arm64":
+		return "replica", os.Mkdir("replica", os.ModePerm)
+	default:
+		return ioutil.TempDir("", "replica")
+	}
+}
+
 func (s *TestSuite) TestCreate(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -44,7 +54,7 @@ func getNow() string {
 }
 
 func (s *TestSuite) TestSnapshot(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -127,7 +137,7 @@ func (s *TestSuite) TestSnapshot(c *C) {
 }
 
 func (s *TestSuite) TestRevert(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -241,7 +251,7 @@ func (s *TestSuite) TestRevert(c *C) {
 }
 
 func (s *TestSuite) TestRemoveLeafNode(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -322,7 +332,7 @@ func (s *TestSuite) TestRemoveLeafNode(c *C) {
 }
 
 func (s *TestSuite) TestRemoveLast(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -371,7 +381,7 @@ func (s *TestSuite) TestRemoveLast(c *C) {
 }
 
 func (s *TestSuite) TestRemoveMiddle(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -421,7 +431,7 @@ func (s *TestSuite) TestRemoveMiddle(c *C) {
 }
 
 func (s *TestSuite) TestRemoveFirst(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -455,7 +465,7 @@ func (s *TestSuite) TestRemoveFirst(c *C) {
 }
 
 func (s *TestSuite) TestRemoveOutOfChain(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -534,7 +544,7 @@ func (s *TestSuite) TestRemoveOutOfChain(c *C) {
 }
 
 func (s *TestSuite) TestPrepareRemove(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -675,7 +685,7 @@ func fill(buf []byte, val byte) {
 }
 
 func (s *TestSuite) TestRead(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -692,7 +702,7 @@ func (s *TestSuite) TestRead(c *C) {
 }
 
 func (s *TestSuite) TestWrite(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -715,7 +725,7 @@ func (s *TestSuite) TestWrite(c *C) {
 }
 
 func (s *TestSuite) TestSnapshotReadWrite(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Logf("Volume: %s", dir)
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
@@ -763,7 +773,7 @@ func (s *TestSuite) TestSnapshotReadWrite(c *C) {
 }
 
 func (s *TestSuite) TestBackingFile(c *C) {
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Logf("Volume: %s", dir)
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
@@ -809,7 +819,7 @@ func (s *TestSuite) TestBackingFile(c *C) {
 
 func (s *TestSuite) partialWriteRead(c *C, totalLength, writeLength, writeOffset int64) {
 	fmt.Println("Starting partialWriteRead")
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	c.Logf("Volume: %s", dir)
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
@@ -859,7 +869,7 @@ func (s *TestSuite) TestPartialWriteRead(c *C) {
 
 func (s *TestSuite) testPartialRead(c *C, totalLength int64, readBuf []byte, offset int64) (int, error) {
 	fmt.Println("Filling data for partialRead")
-	dir, err := ioutil.TempDir("", "replica")
+	dir, err := createTmpDir()
 	fmt.Printf("Volume: %s\n", dir)
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
