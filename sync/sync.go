@@ -489,18 +489,29 @@ func (t *Task) syncFiles(fromClient, toClient *replicaClient.ReplicaClient, disk
 			return fmt.Errorf("Disk list shouldn't contain volume-head")
 		}
 
-		/*		ok, err := isRevisionCountSame(fromClient, toClient, disk)
-				if err != nil {
-					return err
-				}
-		*/
-		//		if !ok {
 		rebuild.SetStatus(disk, types.RebuildInProgress)
-		if err := t.syncFile(disk, "", fromClient, toClient); err != nil {
+		// sync metafile first, since metafile has only importance of forming chain
+		// Since sync is happening in reverse order, that is from oldest to latest.
+		// If snapshot's parent is already synced, it makes sense to update the
+		// metafile because chain may be pointing to different parent.
+		//
+		// For exp:
+		// Let's consider following case where chain in R1 is different and it's
+		// different in R2.
+		// R1: H->d->c->b->a (RW)                | R2: H->d->a (WO)
+		//
+		// sync will be started from a to d, so if we have synced a, b, c in
+		// order d's metafile in R2 should be pointing to c instead of a even before
+		// syncing d because d will be pointing to a. So in case of crash at this
+		// point, will not be an issue, because now data is pointing to correct parent.
+		// With this fix we are eleminating the case of having partial data in d
+		// due to syncing of holes, since those offsets will be already sinced in
+		// the previous files c, b, a respectively.
+		if err := t.syncFile(disk+".meta", "", fromClient, toClient); err != nil {
 			return err
 		}
-		//		}
-		if err := t.syncFile(disk+".meta", "", fromClient, toClient); err != nil {
+
+		if err := t.syncFile(disk, "", fromClient, toClient); err != nil {
 			return err
 		}
 		rebuild.SetStatus(disk, types.RebuildCompleted)

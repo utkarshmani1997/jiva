@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -199,20 +201,89 @@ func rmSnapshot(c *cli.Context) error {
 	return lastErr
 }
 
-func getCommonSnapshots(replicas []rest.Replica) ([]string, error) {
+func isHeadDisk(diskName string) bool {
+	if strings.HasPrefix(diskName, "volume-head-") && strings.HasSuffix(diskName, ".img") {
+		return true
+	}
+	return false
+}
+
+func getSortedChain(address string) ([]string, string, error) {
+	latest := ""
+	repClient, err := replicaClient.NewReplicaClient(address)
+	if err != nil {
+		return nil, latest, err
+	}
+
+	r, err := repClient.GetReplica()
+	if err != nil {
+		return nil, latest, err
+	}
+
+	var snapList = make([]struct {
+		name string
+		size int64
+	}, len(r.Chain))
+
+	for i, disk := range r.Chain {
+		snapList[i].name = disk
+		snapList[i].size, err = strconv.ParseInt(r.Disks[disk].Size, 10, 64)
+		if err != nil {
+			return nil, latest, fmt.Errorf("Failed to convert size: %v into int64, err: %v", r.Disks[disk].Size, err)
+		}
+	}
+
+	sort.SliceStable(snapList, func(i, j int) bool {
+		return snapList[j].size < snapList[i].size
+	})
+
+	// +1 to accomodate empty parent
+	var disks = make([]string, len(r.Chain)+1)
+
+	// start from one to add head to 0th index
+	// which will be ignored in the callee
+	i := 1
+	for _, snap := range snapList {
+		if isHeadDisk(snap.name) {
+			disks[0] = snap.name
+		}
+		disks[i] = r.Disks[snap.name].Parent
+		if disks[i] == r.Chain[1] {
+			latest = disks[i]
+		}
+		i++
+	}
+
+	return disks, latest, err
+}
+
+// getCommonSnapshots returns common snapshots of healthy replicas
+// and latest snapshot.
+// if sorted is true, it will return the snapshots sorted with decresing
+// ordee of size with one extra empty snapshot
+func getCommonSnapshots(replicas []rest.Replica, sorted bool) ([]string, string, error) {
 	first := true
+	latest := ""
 	snapshots := []string{}
 	for _, r := range replicas {
 		if r.Mode != "RW" {
 			continue
 		}
 
+		var chain []string
+		var err error
+		if sorted {
+			chain, latest, err = getSortedChain(r.Address)
+		} else {
+			chain, err = getChain(r.Address)
+		}
+		if err != nil {
+			return nil, latest, err
+		}
+
 		if first {
 			first = false
-			chain, err := getChain(r.Address)
-			if err != nil {
-				return nil, err
-			}
+
 			// Replica can just started and haven't prepare the head
 			// file yet
 			if len(chain) == 0 {
@@ -222,16 +293,11 @@ func getCommonSnapshots(replicas []rest.Replica) ([]string, error) {
 			continue
 		}
 
-		chain, err := getChain(r.Address)
-		if err != nil {
-			return nil, err
-		}
-
 		snapshots = util.Filter(snapshots, func(i string) bool {
 			return util.Contains(chain, i)
 		})
 	}
-	return snapshots, nil
+	return snapshots, latest, nil
 }
 
 func lsSnapshot(c *cli.Context) error {
@@ -243,7 +309,7 @@ func lsSnapshot(c *cli.Context) error {
 	}
 
 	snapshots := []string{}
-	snapshots, err = getCommonSnapshots(replicas)
+	snapshots, _, err = getCommonSnapshots(replicas, false)
 	if err != nil {
 		return err
 	}
