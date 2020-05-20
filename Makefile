@@ -71,10 +71,10 @@ test:
 	sudo -E bash -x ./ci/start_init_test.sh
 
 test_features:
-	sudo -E bash -x ./ci/feature_tests.sh
+	sudo -E bash ./ci/feature_tests.sh
 
 test_resiliency:
-	sudo -E bash -x ./ci/resiliency_tests.sh
+	sudo -E bash ./ci/resiliency_tests.sh
 
 build_image:
 	@echo "INFO:\tRun unit tests and build image"

@@ -1,6 +1,6 @@
 
 #!/bin/bash
-set -x
+#set -x
 
 PS4='${LINENO}: '
 CONTROLLER_IP="172.18.0.2"
