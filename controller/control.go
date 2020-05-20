@@ -366,11 +366,11 @@ func (c *Controller) registerReplica(register types.RegReplica) error {
 		}
 	}
 
-	if register.RepType == "quorum" {
-		c.RegisteredQuorumReplicas[register.Address] = register
+	c.RegisteredReplicas[register.Address] = register
+	if register.RepState == "rebuilding" {
+		logrus.Errorf("Cannot add replica in rebuilding state, addr: %v", register.Address)
 		return nil
 	}
-	c.RegisteredReplicas[register.Address] = register
 
 	if len(c.replicas) > 0 {
 		logrus.Infof("There are already some replicas attached")
@@ -387,11 +387,6 @@ func (c *Controller) registerReplica(register types.RegReplica) error {
 			logrus.Infof("Can signal only to %s , can't signal to %s, no of registered replicas are %d and replication factor is %d",
 				c.MaxRevReplica, register.Address, len(c.RegisteredReplicas), c.ReplicationFactor)
 		}
-		return nil
-	}
-
-	if register.RepState == "rebuilding" {
-		logrus.Errorf("Cannot add replica in rebuilding state, addr: %v", register.Address)
 		return nil
 	}
 

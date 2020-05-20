@@ -206,10 +206,7 @@ func (t *Task) AddReplica(replicaAddress string, s *replica.Server) error {
 	if s == nil {
 		return fmt.Errorf("Server not present for %v, Add replica using CLI not supported", replicaAddress)
 	}
-	logrus.Infof("CheckAndResetFailedRebuild %v", replicaAddress)
-	if err := t.checkAndResetFailedRebuild(replicaAddress, s); err != nil {
-		return fmt.Errorf("CheckAndResetFailedRebuild failed, error: %s", err.Error())
-	}
+
 	types.ShouldPunchHoles = false
 	logrus.Infof("Addreplica %v", replicaAddress)
 	ticker := time.NewTicker(5 * time.Second)
@@ -283,11 +280,6 @@ Register:
 		return fmt.Errorf("failed to get transfer clients, error: %s", err.Error())
 	}
 
-	logrus.Infof("SetRebuilding to true in %v", replicaAddress)
-	if err := toClient.SetRebuilding(true); err != nil {
-		return fmt.Errorf("failed to set rebuilding: true, error: %s", err.Error())
-	}
-
 	logrus.Infof("PrepareRebuild %v", replicaAddress)
 	output, err := t.client.PrepareRebuild(rest.EncodeID(replicaAddress))
 	if err != nil {
@@ -301,6 +293,11 @@ Register:
 	}
 
 	if !ok {
+		logrus.Infof("SetRebuilding to true in %v", replicaAddress)
+		if err := toClient.SetRebuilding(true); err != nil {
+			return fmt.Errorf("failed to set rebuilding: true, error: %s", err.Error())
+		}
+
 		logrus.Infof("syncFiles from:%v to:%v", fromClient, toClient)
 		if err = t.syncFiles(fromClient, toClient, output.Disks); err != nil {
 			return err
